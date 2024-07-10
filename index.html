@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Top-Scrolling Flying Game</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            background-color: #000;
+            color: #fff;
+        }
+
+        #info {
+            display: flex;
+            justify-content: space-between;
+            width: 800px;
+            margin-bottom: 20px;
+        }
+
+        canvas {
+            border: 1px solid black;
+            background-color: black;
+        }
+
+        #score,
+        #word,
+        #gameOver,
+        #startButton {
+            margin: 10px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="info">
+        <div id="score">Score: 0</div>
+        <div id="word">Word: </div>
+    </div>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <div id="gameOver" style="display: none">Game Over!</div>
+    <button id="startButton">Start Game</button>
+    <script>
+        // Get the canvas element
+        var canvas = document.getElementById("gameCanvas");
+        var ctx = canvas.getContext("2d");
+
+        // Load player image
+        var playerImg = new Image();
+        playerImg.src = "https://via.placeholder.com/50";
+
+        // Player object
+        var player = {
+            x: canvas.width / 2,
+            y: canvas.height - 60,
+            width: 50,
+            height: 50,
+            speed: 5,
+            bullets: []
+        };
+
+        // Bullets array
+        var playerBullets = [];
+
+        // Letters array
+        var letters = [];
+
+        // Current level and word index
+        var currentLevel = 0;
+        var wordIndex = 0;
+
+        // Levels definition
+        var levels = [
+            { word: "DO MORE", barriers: false },
+            { word: "RESTORE", barriers: true, maxHits: 5 },
+            { word: "FINISH", barriers: true, enemies: true }
+        ];
+
+        // Score
+        var score = 0;
+
+        // Displayed word
+        var displayedWord = '';
+
+        // Game over flag
+        var gameOver = true;
+
+        function getRandomLetter() {
+            const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+            return letters[Math.floor(Math.random() * letters.length)];
+        }
+
+        function createLetter(char, x, y, barrier, maxHits) {
+            return {
+                char,
+                x,
+                y,
+                width: 30,
+                height: 30,
+                barrier,
+                maxHits: maxHits || 1,
+                hitPoints: barrier ? maxHits : 1,
+                speed: Math.random() * 2 + 1 // Random speed between 1 and 3
+            };
+        }
+
+        function initLevel() {
+            wordIndex = 0;
+            displayedWord = levels[currentLevel].word;
+            document.getElementById("word").innerText = "Word: " + displayedWord;
+            const level = levels[currentLevel];
+            letters = [];
+
+            // Add letters of the word multiple times
+            for (let i = 0; i < level.word.length; i++) {
+                const char = level.word[i];
+                for (let j = 0; j < 2; j++) {  // Ensure multiple instances
+                    const x = Math.random() * (canvas.width - 30);
+                    const y = -30 * (i + 1 + j * level.word.length);
+                    letters.push(createLetter(char, x, y, level.barriers, level.maxHits));
+                }
+            }
+
+            // Add fewer random letters
+            for (let i = 0; i < 5; i++) {
+                const char = getRandomLetter();
+                const x = Math.random() * (canvas.width - 30);
+                const y = -30 * (i + 1 + level.word.length * 2);
+                letters.push(createLetter(char, x, y, level.barriers, level.maxHits));
+            }
+        }
+
+        function drawPlayer() {
+            ctx.drawImage(playerImg, player.x, player.y, player.width, player.height);
+        }
+
+        function drawLetters() {
+            letters.forEach(letter => {
+                ctx.fillStyle = 'yellow';
+                ctx.fillRect(letter.x, letter.y, letter.width, letter.height);
+                ctx.fillStyle = 'black';
+                ctx.fillText(letter.char, letter.x + 10, letter.y + 20);
+                if (letter.barrier) {
+                    ctx.strokeStyle = 'red';
+                    ctx.strokeRect(letter.x, letter.y, letter.width, letter.height);
+                }
+            });
+        }
+
+        function drawBullets() {
+            ctx.fillStyle = 'red';
+            playerBullets.forEach(bullet => {
+                ctx.fillRect(bullet.x, bullet.y, bullet.width, bullet.height);
+            });
+        }
+
+        function updatePlayer() {
+            if (rightPressed && player.x < canvas.width - player.width) {
+                player.x += player.speed;
+            } else if (leftPressed && player.x > 0) {
+                player.x -= player.speed;
+            }
+
+            playerBullets.forEach((bullet, index) => {
+                bullet.y -= bullet.speed;
+                if (bullet.y < 0) playerBullets.splice(index, 1);
+            });
+        }
+
+        function updateLetters() {
+            letters.forEach(letter => {
+                letter.y += letter.speed;
+                if (letter.y > canvas.height) letter.y = -50;
+            });
+        }
+
+        function checkCollision(rect1, rect2) {
+            return (
+                rect1.x < rect2.x + rect2.width &&
+                rect1.x + rect1.width > rect2.x &&
+                rect1.y < rect2.y + rect2.height &&
+                rect1.y + rect1.height > rect2.y
+            );
+        }
+
+        function handleCollisions() {
+            for (let i = playerBullets.length - 1; i >= 0; i--) {
+                const bullet = playerBullets[i];
+                for (let j = letters.length - 1; j >= 0; j--) {
+                    const letter = letters[j];
+                    if (checkCollision(bullet, letter)) {
+                        playerBullets.splice(i, 1);
+                        letter.hitPoints -= 1;
+                        if (letter.hitPoints <= 0) {
+                            if (letter.char === levels[currentLevel].word[wordIndex]) {
+                                letters.splice(j, 1);
+                                wordIndex += 1;
+                                displayedWord = displayedWord.substring(0, wordIndex - 1) + "X" + displayedWord.substring(wordIndex);
+                                document.getElementById("word").innerText = "Word: " + displayedWord;
+                                score += 10;
+                                document.getElementById("score").innerText = "Score: " + score;
+                                if (wordIndex === levels[currentLevel].word.length) {
+                                    currentLevel += 1;
+                                    if (currentLevel < levels.length) {
+                                        initLevel();
+                                    } else {
+                                        alert('You Win!');
+                                        endGame();
+                                    }
+                                }
+                            } else {
+                                letters.splice(j, 1);
+                                if (wordIndex > 0) {
+                                    displayedWord = displayedWord.substring(0, wordIndex - 1) + levels[currentLevel].word[wordIndex - 1] + displayedWord.substring(wordIndex);
+                                    wordIndex -= 1;
+                                }
+                                document.getElementById("word").innerText = "Word: " + displayedWord;
+                                score -= 20;
+                                document.getElementById("score").innerText = "Score: " + score;
+                            }
+                        } else {
+                            // Decrease size of the letter on hit in Level 2
+                            if (currentLevel === 1) {
+                                letter.width -= 5;
+                                letter.height -= 5;
+                            }
+                        }
+                        break; // exit the inner loop if a collision is detected
+                    }
+                }
+            }
+        }
+
+        function draw() {
+            if (!gameOver) {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                drawPlayer();
+                drawLetters();
+                drawBullets();
+                updatePlayer();
+                updateLetters();
+                handleCollisions();
+                requestAnimationFrame(draw);
+            }
+        }
+
+        function endGame() {
+            gameOver = true;
+            document.getElementById("gameOver").style.display = "block";
+        }
+
+        // Keyboard event listeners
+        var rightPressed = false;
+        var leftPressed = false;
+        document.addEventListener("keydown", keyDownHandler, false);
+        document.addEventListener("keyup", keyUpHandler, false);
+
+        function keyDownHandler(e) {
+            if (e.key == "Right" || e.key == "ArrowRight") {
+                rightPressed = true;
+            } else if (e.key == "Left" || e.key == "ArrowLeft") {
+                leftPressed = true;
+            } else if (e.key == " ") {
+                shootBullet();
+            }
+        }
+
+        function keyUpHandler(e) {
+            if (e.key == "Right" || e.key == "ArrowRight") {
+                rightPressed = false;
+            } else if (e.key == "Left" || e.key == "ArrowLeft") {
+                leftPressed = false;
+            }
+        }
+
+        // Shoot player bullet
+        function shootBullet() {
+            var bullet = {
+                x: player.x + player.width / 2 - 2.5,
+                y: player.y,
+                width: 5,
+                height: 10,
+                speed: 8,
+            };
+            playerBullets.push(bullet);
+        }
+
+        document.getElementById("startButton").addEventListener("click", function () {
+            if (gameOver) {
+                gameOver = false;
+                score = 0;
+                displayedWord = levels[currentLevel].word;
+                document.getElementById("score").innerText = "Score: " + score;
+                document.getElementById("word").innerText = "Word: " + displayedWord;
+                player.x = canvas.width / 2;
+                player.bullets = [];
+                letters = [];
+                currentLevel = 0;
+                initLevel();
+                document.getElementById("gameOver").style.display = "none";
+                draw();
+            }
+        });
+
+        initLevel();
+    </script>
+</body>
+
+</html>
